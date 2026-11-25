@@ -17,6 +17,7 @@ namespace InputTask
 {
     // 记录功率调节时间和编码器中断状态。
     static constinit std::uint32_t power_adjusted_at_ms = 0;
+    // 编码器中断与输入任务通过同一临界区交接步数和旋转标志。
     static constinit portMUX_TYPE encoder_lock = portMUX_INITIALIZER_UNLOCKED;
     static constinit std::int32_t pending_regular_steps = 0;
     static constinit std::int32_t pending_power_steps = 0;
@@ -44,6 +45,9 @@ namespace InputTask
     */
     static void IRAM_ATTR encoderInterrupt(void *)
     {
+        // 持锁读取引脚并更新编码器状态。
+        portENTER_CRITICAL_ISR(&encoder_lock);
+
         // 依次读取 A、B 两相并组合为状态。
         const int a = gpio_get_level(encoder_a);
         const int b = gpio_get_level(encoder_b);
@@ -70,6 +74,7 @@ namespace InputTask
             }
         }
         previous_encoder_state = state;
+        portEXIT_CRITICAL_ISR(&encoder_lock);
     }
 
     void initializeInput()

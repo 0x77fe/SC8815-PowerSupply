@@ -40,9 +40,10 @@ bool i2cTransfer(std::uint8_t address, std::span<const std::uint8_t> write,
 {
     if (address != sc8815_i2c_address && address != board_display_address) return false;
 
-    // 每笔事务独占总线，OLED 在分块之间让出总线，寄存器读取使用重复起始。
-    const int timeout_ms = 2;
-    const i2c_master_dev_handle_t device = address == sc8815_i2c_address ? converter : display;
+    // OLED 整页传输在 400 kHz 下约需 3 ms，页间释放总线。
+    const bool is_converter = address == sc8815_i2c_address;
+    const int timeout_ms = is_converter ? 2 : 5;
+    const i2c_master_dev_handle_t device = is_converter ? converter : display;
     xSemaphoreTake(bus_mutex, portMAX_DELAY);
     esp_err_t result;
     if (!write.empty() && !read.empty()) result = i2c_master_transmit_receive(device, write.data(), write.size(), read.data(), read.size(), timeout_ms);

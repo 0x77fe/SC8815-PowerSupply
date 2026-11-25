@@ -17,10 +17,9 @@
 static constexpr int screen_width = 128;
 static constexpr int screen_height = 64;
 static constexpr int screen_pages = screen_height / 8;
-static constexpr std::size_t chunk_size = 30;
 
-// 帧缓冲按列和页索引，每页包含 8 个垂直像素。
-static std::uint8_t frame[screen_width][screen_pages];
+// 帧缓冲按页和列索引，每字节保存同列的 8 个垂直像素。
+static std::uint8_t frame[screen_pages][screen_width];
 
 // 5×7 字形按列储存，覆盖仪表界面的字符。
 static constexpr std::string_view glyph_characters = "-.:0123456789ACFIMNOVWX";
@@ -65,7 +64,7 @@ bool screenInitialize()
 }
 
 /*
-* 分块发送 OLED 帧缓冲。
+* 按显存页发送 OLED 帧，每页使用一笔数据事务。
 */
 static bool screenSendFrame()
 {
@@ -73,20 +72,13 @@ static bool screenSendFrame()
     const std::uint8_t address[] = {0x00, 0x21, 0, screen_width - 1, 0x22, 0, screen_pages - 1};
     if (!i2cTransfer(board_display_address, address, {})) return false;
 
-    // 水平寻址先遍历当前页的所有列，再进入下一页。
-    std::uint8_t packet[1 + chunk_size] = {0x40};
-    for (std::size_t offset = 0; offset < sizeof(frame); offset += chunk_size)
+    // 每笔数据事务携带控制字节和当前页的 128 列像素。
+    std::uint8_t packet[1 + screen_width] = {0x40};
+    for (int page = 0; page < screen_pages; ++page)
     {
-        const std::size_t remaining = sizeof(frame) - offset;
-        const std::size_t count = remaining < chunk_size ? remaining : chunk_size;
-        for (std::size_t index = 0; index < count; ++index)
-        {
-            const std::size_t position = offset + index;
-            packet[1 + index] = frame[position % screen_width][position / screen_width];
-        }
+        std::ranges::copy(frame[page], packet + 1);
 
-        // 每笔事务带有数据控制字节，分块之间允许转换器使用总线。
-        if (!i2cTransfer(board_display_address, std::span{packet}.first(count + 1), {})) return false;
+        if (!i2cTransfer(board_display_address, packet, {})) return false;
     }
     return true;
 }
@@ -99,7 +91,7 @@ static void drawPixel(int x, int y, bool white)
     if (x >= 0 && x < screen_width && y >= 0 && y < screen_height)
     {
         const std::uint8_t bit = 1u << (y % 8);
-        std::uint8_t &pixels = frame[x][y / 8];
+        std::uint8_t &pixels = frame[y / 8][x];
         if (white) pixels |= bit;
         else pixels &= static_cast<std::uint8_t>(~bit);
     }
@@ -204,7 +196,7 @@ void DisplayTask::run(void *)
         xSemaphoreTake(state_mutex, portMAX_DELAY);
 
         // 大字显示输出电压、电流和功率。
-        for (auto &column : frame) std::ranges::fill(column, 0);
+        for (auto &page : frame) std::ranges::fill(page, 0);
 
         const bool output_power_valid = power_sample.VbusValid && power_sample.IbusValid;
         bool inverted;
@@ -288,7 +280,7 @@ void DisplayTask::run(void *)
 bool screenShowStartup()
 {
     // 左侧放置带单像素描边的半色调标志。
-    for (auto &column : frame) std::ranges::fill(column, 0);
+    for (auto &page : frame) std::ranges::fill(page, 0);
     const std::int16_t logo_x = 2;
     const std::int16_t logo_right = logo_x + logo_width;
     drawBitmap(logo_x, 2, logo_bitmap, logo_width, logo_height);

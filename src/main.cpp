@@ -24,6 +24,7 @@ extern "C" void app_main()
 
     // 在启动任务前创建状态互斥锁。
     state_mutex = xSemaphoreCreateMutex();
+    ESP_ERROR_CHECK(state_mutex != nullptr ? ESP_OK : ESP_ERR_NO_MEM);
 
     // 采样优先于输入，显示和保存使用较低优先级。
     xTaskCreate(SampleTask::run, "power_sample", task_stack_bytes, nullptr, priority_sample, nullptr);
