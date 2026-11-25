@@ -11,6 +11,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
+#include "input.h"
+#include "power_supply.h"
 #include "task_context.h"
 
 namespace InputTask
@@ -126,46 +128,6 @@ namespace InputTask
     static constexpr auto power_stop_pin = static_cast<gpio_num_t>(board_power_stop);
 
     /*
-    * 在写入失败时关闭输出并记录失败步骤。
-    */
-    static bool powerFail(std::string_view step);
-
-    /*
-    * 按安全顺序应用电压和限流设定。
-    */
-    static bool powerApply();
-
-    bool powerInitialize()
-    {
-        // 初始化PSTOP
-        gpio_set_level(power_stop_pin, 1);
-        gpio_set_direction(power_stop_pin, GPIO_MODE_OUTPUT);
-
-        // 复位参数
-        output_state = OUTPUT_Standby;
-        has_applied = false;
-        SampleTask::resetSamples();
-
-        // 芯片配置和初始设定。
-        constexpr Sc8815DitheringAndSlewRateConfig slew =
-        {
-            .FactoryBit = SC8815_FACTORY_POWERUP,
-            .EnDither = SC8815_EN_DITHER_DISABLE,
-            .Slew = SC8815_SLEW_SET_2mV_us,
-        };
-
-        if (!sc8815Begin(power_chip)) return powerFail("I2C probe");
-        if (!sc8815ConfigureBatteryCharging(power_chip, board_battery)) return powerFail("Battery config");
-        if (!sc8815ConfigureMeasurementAndLimitRatios(power_chip, board_ratios)) return powerFail("Ratio config");
-        if (!sc8815ConfigureModeAndSwitching(power_chip, board_switching)) return powerFail("Switching config");
-        if (!sc8815ConfigureChargingAndFeedback(power_chip, board_feedback)) return powerFail("Feedback config");
-        if (!sc8815ConfigureDitheringAndSlewRate(power_chip, slew)) return powerFail("Slew config");
-        if (!sc8815ConfigurePowerPathAndMonitoring(power_chip, board_monitoring)) return powerFail("ADC config");
-        if (!sc8815SetIrqMask(power_chip, {})) return powerFail("IRQ mask");
-        return powerApply();
-    }
-
-    /*
     * 在待机且设定已应用时使能输出。
     */
     static bool powerEnableOutput()
@@ -188,7 +150,7 @@ namespace InputTask
     }
 
     /*
-    * 芯片配置或设定写入失败时关闭输出，并记录失败步骤。
+    * 在写入失败时关闭输出并记录失败步骤。
     */
     static bool powerFail(std::string_view step)
     {
@@ -222,7 +184,7 @@ namespace InputTask
     }
 
     /*
-    * 按安全顺序写入输出电压和电流上限。
+    * 按安全顺序应用电压和限流设定。
     */
     static bool powerApply()
     {
@@ -240,6 +202,36 @@ namespace InputTask
         applied_settings = output_settings;
         has_applied = true;
         return true;
+    }
+
+    bool powerInitialize()
+    {
+        // 初始化PSTOP
+        gpio_set_level(power_stop_pin, 1);
+        gpio_set_direction(power_stop_pin, GPIO_MODE_OUTPUT);
+
+        // 复位参数
+        output_state = OUTPUT_Standby;
+        has_applied = false;
+        SampleTask::resetSamples();
+
+        // 芯片配置和初始设定。
+        constexpr Sc8815DitheringAndSlewRateConfig slew =
+        {
+            .FactoryBit = SC8815_FACTORY_POWERUP,
+            .EnDither = SC8815_EN_DITHER_DISABLE,
+            .Slew = SC8815_SLEW_SET_2mV_us,
+        };
+
+        if (!sc8815Begin(power_chip)) return powerFail("I2C probe");
+        if (!sc8815ConfigureBatteryCharging(power_chip, board_battery)) return powerFail("Battery config");
+        if (!sc8815ConfigureMeasurementAndLimitRatios(power_chip, board_ratios)) return powerFail("Ratio config");
+        if (!sc8815ConfigureModeAndSwitching(power_chip, board_switching)) return powerFail("Switching config");
+        if (!sc8815ConfigureChargingAndFeedback(power_chip, board_feedback)) return powerFail("Feedback config");
+        if (!sc8815ConfigureDitheringAndSlewRate(power_chip, slew)) return powerFail("Slew config");
+        if (!sc8815ConfigurePowerPathAndMonitoring(power_chip, board_monitoring)) return powerFail("ADC config");
+        if (!sc8815SetIrqMask(power_chip, {})) return powerFail("IRQ mask");
+        return powerApply();
     }
 
     /*

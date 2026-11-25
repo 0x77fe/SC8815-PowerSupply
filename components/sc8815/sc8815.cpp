@@ -31,18 +31,6 @@ static bool sc8815ReadRegisters(const Sc8815 &chip, Sc8815Register first, std::s
 }
 
 /*
-* 换算并校验限流编码，再写入寄存器。
-*/
-static bool sc8815WriteCurrentLimit(const Sc8815 &chip, Sc8815Register reg,
-                                      float current_a, float ratio, float sense_mohm);
-
-/*
-* 将参考电压换算为寄存器编码并写入。
-*/
-static bool sc8815WriteVbusReference(const Sc8815 &chip, Sc8815Register high_reg,
-                                        Sc8815Register low_reg, std::uint16_t ref_mv);
-
-/*
 * 写入单字节寄存器。
 */
 static bool sc8815WriteByte(const Sc8815 &chip, Sc8815Register reg, std::uint8_t data)
@@ -84,17 +72,6 @@ bool sc8815ConfigureBatteryCharging(const Sc8815 &chip, Sc8815VbatSetConfig conf
     return sc8815WriteByte(chip, SC8815_REG_VBAT_SET, reg);
 }
 
-bool sc8815SetVbusRefI(const Sc8815 &chip, std::uint16_t ref_mv)
-{
-    return sc8815WriteVbusReference(chip, SC8815_REG_VBUSREF_I_SET, SC8815_REG_VBUSREF_I_SET2, ref_mv);
-}
-
-bool sc8815SetVbusRefE(const Sc8815 &chip, std::uint16_t ref_mv)
-{
-    // 外部参考电压的推荐工作范围为 0.7 V 至 2.048 V。
-    return sc8815WriteVbusReference(chip, SC8815_REG_VBUSREF_E_SET, SC8815_REG_VBUSREF_E_SET2, ref_mv);
-}
-
 /*
 * 将参考电压换算为寄存器编码并写入。
 */
@@ -112,6 +89,33 @@ static bool sc8815WriteVbusReference(const Sc8815 &chip, Sc8815Register high_reg
         static_cast<std::uint8_t>((low_byte & 0x3F) | ((code & 0x03) << 6))
     };
     return sc8815WriteRegisters(chip, high_reg, data);
+}
+
+bool sc8815SetVbusRefI(const Sc8815 &chip, std::uint16_t ref_mv)
+{
+    return sc8815WriteVbusReference(chip, SC8815_REG_VBUSREF_I_SET, SC8815_REG_VBUSREF_I_SET2, ref_mv);
+}
+
+bool sc8815SetVbusRefE(const Sc8815 &chip, std::uint16_t ref_mv)
+{
+    // 外部参考电压的推荐工作范围为 0.7 V 至 2.048 V。
+    return sc8815WriteVbusReference(chip, SC8815_REG_VBUSREF_E_SET, SC8815_REG_VBUSREF_E_SET2, ref_mv);
+}
+
+/*
+* 换算并校验限流编码，再写入寄存器。
+*/
+static bool sc8815WriteCurrentLimit(const Sc8815 &chip, Sc8815Register reg, float current_a, float ratio, float sense_mohm)
+{
+    // 电流换算要求有效的采样电阻。
+    if (sense_mohm == 0.0f || !std::isfinite(sense_mohm)) return false;
+
+    const float code = ((current_a * 256.0f * sense_mohm) / (ratio * 10.0f) - 1.0f) + 0.5f;
+
+    // 转换向零截断，只有截断结果可用 std::uint8_t 表示时才执行。
+    if (!std::isfinite(code) || code <= -1.0f || code >= 256.0f) return false;
+
+    return sc8815WriteByte(chip, reg, static_cast<std::uint8_t>(code));
 }
 
 bool sc8815SetIbusLimit(const Sc8815 &chip, float current_a)
@@ -145,22 +149,6 @@ bool sc8815SetIbatLimit(const Sc8815 &chip, float current_a)
 
     float ratio_val = (ibat_ratio == SC8815_IBAT_RATIO_6x) ? 6.0f : 12.0f;
     return sc8815WriteCurrentLimit(chip, SC8815_REG_IBAT_LIM_SET, current_a, ratio_val, chip.Rs2MOhm);
-}
-
-/*
-* 换算并校验限流编码，再写入寄存器。
-*/
-static bool sc8815WriteCurrentLimit(const Sc8815 &chip, Sc8815Register reg, float current_a, float ratio, float sense_mohm)
-{
-    // 电流换算要求有效的采样电阻。
-    if (sense_mohm == 0.0f || !std::isfinite(sense_mohm)) return false;
-
-    const float code = ((current_a * 256.0f * sense_mohm) / (ratio * 10.0f) - 1.0f) + 0.5f;
-
-    // 转换向零截断，只有截断结果可用 std::uint8_t 表示时才执行。
-    if (!std::isfinite(code) || code <= -1.0f || code >= 256.0f) return false;
-
-    return sc8815WriteByte(chip, reg, static_cast<std::uint8_t>(code));
 }
 
 bool sc8815SetVinreg(const Sc8815 &chip, std::uint16_t voltage_mv)

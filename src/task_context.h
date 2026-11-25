@@ -1,16 +1,14 @@
 #pragma once
 
+#include <cstdint>
+
 #include "board_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "i2c.h"
 #include "sc8815.h"
 
-// FreeRTOS 任务的优先级和栈大小。
-inline constexpr UBaseType_t priority_save = 2;
-inline constexpr UBaseType_t priority_display = 3;
-inline constexpr UBaseType_t priority_input = 4;
-inline constexpr UBaseType_t priority_sample = 5;
+// 各任务共用的栈大小。
 inline constexpr std::uint32_t task_stack_bytes = 4096;
 
 enum AdjustMode
@@ -58,70 +56,3 @@ inline constinit OutputState output_state = OUTPUT_Standby;
 inline constinit bool has_applied = false;
 inline constinit OutputSettings applied_settings{};
 inline constinit PowerSample power_sample{};
-
-// 处理旋钮与按键操作，配置并控制电源输出。
-namespace InputTask
-{
-    /*
-    * 配置芯片并应用输出设定。
-    */
-    bool powerInitialize();
-
-    /*
-    * 初始化编码器与按键。
-    */
-    void initializeInput();
-
-    /*
-    * 按板级约束规范化输出设定。
-    */
-    OutputSettings normalizeSettings(std::int64_t voltage_mv, std::int64_t current_ma,
-                                     std::int64_t power_limit_w);
-
-    /*
-    * 轮询编码器和按键。
-    */
-    void run(void *);
-}
-
-// 采集电压和电流并维护滤波状态。
-namespace SampleTask
-{
-    /*
-    * 清除输出采样状态和滤波窗口。
-    */
-    void resetOutputSamples();
-
-    /*
-    * 清除全部采样状态和滤波窗口。
-    */
-    void resetSamples();
-
-    /*
-    * 周期采集电压和电流。
-    */
-    void run(void *);
-}
-
-// 在 OLED 上显示共享读数与设定。
-namespace DisplayTask
-{
-    /*
-    * 周期刷新 OLED 仪表。
-    */
-    void run(void *);
-}
-
-// 加载和保存用户输出设定。
-namespace SaveTask
-{
-    /*
-    * 加载已保存的输出设定。
-    */
-    void loadSettings();
-
-    /*
-    * 周期检查并保存设定。
-    */
-    void run(void *);
-}

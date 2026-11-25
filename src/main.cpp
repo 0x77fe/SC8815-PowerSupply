@@ -5,6 +5,9 @@
 #include "freertos/task.h"
 #include "i2c.h"
 #include "screen.h"
+#include "input.h"
+#include "power_supply.h"
+#include "settings.h"
 #include "task_context.h"
 
 /*
@@ -27,8 +30,8 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(state_mutex != nullptr ? ESP_OK : ESP_ERR_NO_MEM);
 
     // 采样优先于输入，显示和保存使用较低优先级。
-    xTaskCreate(SampleTask::run, "power_sample", task_stack_bytes, nullptr, priority_sample, nullptr);
-    xTaskCreate(SaveTask::run, "settings_save", task_stack_bytes, nullptr, priority_save, nullptr);
-    xTaskCreate(DisplayTask::run, "oled_display", task_stack_bytes, nullptr, priority_display, nullptr);
-    xTaskCreate(InputTask::run, "user_input", task_stack_bytes, nullptr, priority_input, nullptr);
+    xTaskCreate(SampleTask::run, "power_sample", task_stack_bytes, nullptr, SampleTask::priority, nullptr);
+    xTaskCreate(SaveTask::run, "settings_save", task_stack_bytes, nullptr, SaveTask::priority, nullptr);
+    xTaskCreate(DisplayTask::run, "oled_display", task_stack_bytes, nullptr, DisplayTask::priority, nullptr);
+    xTaskCreate(InputTask::run, "user_input", task_stack_bytes, nullptr, InputTask::priority, nullptr);
 }

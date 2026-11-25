@@ -39,7 +39,7 @@ flowchart LR
 | --- | --- |
 | [partitions.csv](../partitions.csv) | 应用和 NVS 的 Flash 分区 |
 | [src/main.cpp](../src/main.cpp) | 硬件初始化和任务创建 |
-| [src/task_context.h](../src/task_context.h) | 四个任务命名空间、任务入口与共享运行状态 |
+| [src/task_context.h](../src/task_context.h) | 任务共享状态、共享设备配置与栈大小 |
 | [src/board_config.h](../src/board_config.h) | 引脚、校正、限值和芯片板级配置 |
 | [src/i2c.cpp](../src/i2c.cpp) | I²C0 设备、总线互斥和事务超时 |
 | [src/power_supply.cpp](../src/power_supply.cpp) | 电压电流采样、校正、滤波及采样状态复位 |

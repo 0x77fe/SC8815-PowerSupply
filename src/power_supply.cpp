@@ -3,26 +3,47 @@
 #include "board_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "power_supply.h"
 #include "task_context.h"
 
 namespace SampleTask
 {
-    static constexpr unsigned filter_window_size = 10;
-
     class SampleFilter
     {
     public:
         /*
         * 将样本加入滑动窗口并返回低通结果。
         */
-        float push(float value);
+        float push(float value)
+        {
+            // 第一级对窗口内有效样本取平均。
+            Values[Next] = value;
+            Next = (Next + 1) % filter_window_size;
+            if (Count < filter_window_size) ++Count;
+
+            float sum = 0.0f;
+            for (std::uint8_t i = 0; i < Count; ++i) sum += Values[i];
+            const float average = sum / Count;
+
+            // 第二级以首个有效读数初始化，此后对滑动平均执行一阶低通。
+            const float alpha = 0.4f;
+            if (Count == 1) LowPass = average;
+            else LowPass += alpha * (average - LowPass);
+            return LowPass;
+        }
 
         /*
         * 清空有效采样窗口。
         */
-        void reset();
+        void reset()
+        {
+            Count = 0;
+            Next = 0;
+        }
 
     private:
+        static constexpr unsigned filter_window_size = 10;
+
         float Values[filter_window_size];
         float LowPass;
         std::uint8_t Count;
@@ -49,36 +70,6 @@ namespace SampleTask
         vbat_filter.reset();
         ibat_filter.reset();
         power_sample = {};
-    }
-
-    /*
-    * 对窗口均值执行低通滤波并返回结果。
-    */
-    float SampleFilter::push(float value)
-    {
-        // 第一级对窗口内有效样本取平均。
-        Values[Next] = value;
-        Next = (Next + 1) % filter_window_size;
-        if (Count < filter_window_size) ++Count;
-
-        float sum = 0.0f;
-        for (std::uint8_t i = 0; i < Count; ++i) sum += Values[i];
-        const float average = sum / Count;
-
-        // 第二级以首个有效读数初始化，此后对滑动平均执行一阶低通。
-        const float alpha = 0.4f;
-        if (Count == 1) LowPass = average;
-        else LowPass += alpha * (average - LowPass);
-        return LowPass;
-    }
-
-    /*
-    * 清空有效样本窗口。
-    */
-    void SampleFilter::reset()
-    {
-        Count = 0;
-        Next = 0;
     }
 
     void run(void *)
