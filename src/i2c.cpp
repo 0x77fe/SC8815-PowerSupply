@@ -10,7 +10,6 @@ static i2c_master_dev_handle_t converter;
 static i2c_master_dev_handle_t display;
 static SemaphoreHandle_t bus_mutex;
 
-// 两个设备共享一个控制器，各自使用固定的七位地址。
 void i2cInitialize()
 {
     bus_mutex = xSemaphoreCreateMutex();
@@ -39,32 +38,17 @@ void i2cInitialize()
 bool i2cTransfer(std::uint8_t address, std::span<const std::uint8_t> write,
                   std::span<std::uint8_t> read)
 {
-    if (address != sc8815_i2c_address && address != board_display_address)
-    {
-        return false;
-    }
+    if (address != sc8815_i2c_address && address != board_display_address) return false;
 
     // 每笔事务独占总线，OLED 在分块之间让出总线，寄存器读取使用重复起始。
     const int timeout_ms = 2;
     const i2c_master_dev_handle_t device = address == sc8815_i2c_address ? converter : display;
     xSemaphoreTake(bus_mutex, portMAX_DELAY);
     esp_err_t result;
-    if (!write.empty() && !read.empty())
-    {
-        result = i2c_master_transmit_receive(device, write.data(), write.size(), read.data(), read.size(), timeout_ms);
-    }
-    else if (!write.empty())
-    {
-        result = i2c_master_transmit(device, write.data(), write.size(), timeout_ms);
-    }
-    else if (!read.empty())
-    {
-        result = i2c_master_receive(device, read.data(), read.size(), timeout_ms);
-    }
-    else
-    {
-        result = i2c_master_probe(bus, address, timeout_ms);
-    }
+    if (!write.empty() && !read.empty()) result = i2c_master_transmit_receive(device, write.data(), write.size(), read.data(), read.size(), timeout_ms);
+    else if (!write.empty()) result = i2c_master_transmit(device, write.data(), write.size(), timeout_ms);
+    else if (!read.empty()) result = i2c_master_receive(device, read.data(), read.size(), timeout_ms);
+    else result = i2c_master_probe(bus, address, timeout_ms);
     xSemaphoreGive(bus_mutex);
     return result == ESP_OK;
 }

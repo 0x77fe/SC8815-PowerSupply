@@ -4,64 +4,71 @@
 #include <array>
 #include <cmath>
 
-// 探测设备并传输连续寄存器。
 bool sc8815Begin(const Sc8815 &chip)
 {
     return chip.Transfer(chip.Address, {}, {});
 }
 
+/*
+* 从指定地址连续写入寄存器。
+*/
 static bool sc8815WriteRegisters(const Sc8815 &chip, Sc8815Register first, std::span<const std::uint8_t> data)
 {
     std::array<std::uint8_t, 3> bytes{static_cast<std::uint8_t>(first)};
-    if (data.size() > bytes.size() - 1)
-    {
-        return false;
-    }
+    if (data.size() > bytes.size() - 1) return false;
 
     std::ranges::copy(data, bytes.begin() + 1);
     return chip.Transfer(chip.Address, std::span{bytes}.first(data.size() + 1), {});
 }
 
+/*
+* 从指定地址连续读取寄存器。
+*/
 static bool sc8815ReadRegisters(const Sc8815 &chip, Sc8815Register first, std::span<std::uint8_t> data)
 {
     const std::array address{static_cast<std::uint8_t>(first)};
     return chip.Transfer(chip.Address, std::span{address}, data);
 }
 
+/*
+* 换算并校验限流编码，再写入寄存器。
+*/
 static bool sc8815WriteCurrentLimit(const Sc8815 &chip, Sc8815Register reg,
                                       float current_a, float ratio, float sense_mohm);
+
+/*
+* 将参考电压换算为寄存器编码并写入。
+*/
 static bool sc8815WriteVbusReference(const Sc8815 &chip, Sc8815Register high_reg,
                                         Sc8815Register low_reg, std::uint16_t ref_mv);
 
-// 单字节接口和保留位处理。
-
+/*
+* 写入单字节寄存器。
+*/
 static bool sc8815WriteByte(const Sc8815 &chip, Sc8815Register reg, std::uint8_t data)
 {
     const std::array<std::uint8_t, 1> bytes{data};
     return sc8815WriteRegisters(chip, reg, std::span<const std::uint8_t>{bytes});
 }
 
-// 读取单字节寄存器，传输成功后交付读数。
 bool sc8815ReadRegister(const Sc8815 &chip, Sc8815Register reg, std::uint8_t &data)
 {
     std::array<std::uint8_t, 1> bytes{};
-    if (!sc8815ReadRegisters(chip, reg, std::span<std::uint8_t>{bytes}))
-    {
-        return false;
-    }
+    if (!sc8815ReadRegisters(chip, reg, std::span<std::uint8_t>{bytes})) return false;
 
     data = bytes[0];
     return true;
 }
 
+/*
+* 保留掩码指定的位并更新其余配置位。
+*/
 static bool sc8815WriteMasked(const Sc8815 &chip, Sc8815Register reg, std::uint8_t preserve_mask, std::uint8_t data)
 {
     std::uint8_t current;
     return sc8815ReadRegister(chip, reg, current) &&
            sc8815WriteByte(chip, reg, (current & preserve_mask) | (data & ~preserve_mask));
 }
-
-// 0x00 — VBAT_SET
 
 bool sc8815ConfigureBatteryCharging(const Sc8815 &chip, Sc8815VbatSetConfig config)
 {
@@ -77,8 +84,6 @@ bool sc8815ConfigureBatteryCharging(const Sc8815 &chip, Sc8815VbatSetConfig conf
     return sc8815WriteByte(chip, SC8815_REG_VBAT_SET, reg);
 }
 
-// VBUS 内部和外部参考寄存器共用 2 mV 步进和 10 位编码。
-
 bool sc8815SetVbusRefI(const Sc8815 &chip, std::uint16_t ref_mv)
 {
     return sc8815WriteVbusReference(chip, SC8815_REG_VBUSREF_I_SET, SC8815_REG_VBUSREF_I_SET2, ref_mv);
@@ -90,15 +95,15 @@ bool sc8815SetVbusRefE(const Sc8815 &chip, std::uint16_t ref_mv)
     return sc8815WriteVbusReference(chip, SC8815_REG_VBUSREF_E_SET, SC8815_REG_VBUSREF_E_SET2, ref_mv);
 }
 
+/*
+* 将参考电压换算为寄存器编码并写入。
+*/
 static bool sc8815WriteVbusReference(const Sc8815 &chip, Sc8815Register high_reg, Sc8815Register low_reg, std::uint16_t ref_mv)
 {
     // 将参考电压编码为高 8 位和低 2 位。
     const std::uint16_t code = (ref_mv / 2u - 1u) & 0x03FFu;
     std::uint8_t low_byte;
-    if (!sc8815ReadRegister(chip, low_reg, low_byte))
-    {
-        return false;
-    }
+    if (!sc8815ReadRegister(chip, low_reg, low_byte)) return false;
 
     // 在一次事务中按地址顺序写入两个字节。
     const std::uint8_t data[] =
@@ -109,16 +114,11 @@ static bool sc8815WriteVbusReference(const Sc8815 &chip, Sc8815Register high_reg
     return sc8815WriteRegisters(chip, high_reg, data);
 }
 
-// 0x05 — IBUS_LIM_SET
-
 bool sc8815SetIbusLimit(const Sc8815 &chip, float current_a)
 {
     // 使用芯片当前的比例配置。
     std::uint8_t config;
-    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config))
-    {
-        return false;
-    }
+    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config)) return false;
 
     // 数据手册公式 (表 6):
     //   IBUS_LIM(A) = (IBUS_LIM_SET+1)/256 × IBUS_RATIO × 10mΩ/RS1
@@ -132,16 +132,11 @@ bool sc8815SetIbusLimit(const Sc8815 &chip, float current_a)
     return sc8815WriteCurrentLimit(chip, SC8815_REG_IBUS_LIM_SET, current_a, ratio_val, chip.Rs1MOhm);
 }
 
-// 0x06 — IBAT_LIM_SET
-
 bool sc8815SetIbatLimit(const Sc8815 &chip, float current_a)
 {
     // 使用芯片当前的比例配置。
     std::uint8_t config;
-    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config))
-    {
-        return false;
-    }
+    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config)) return false;
 
     // 数据手册公式 (表 7):
     //   IBAT_LIM(A) = (IBAT_LIM_SET+1)/256 × IBAT_RATIO × 10mΩ/RS2
@@ -152,37 +147,27 @@ bool sc8815SetIbatLimit(const Sc8815 &chip, float current_a)
     return sc8815WriteCurrentLimit(chip, SC8815_REG_IBAT_LIM_SET, current_a, ratio_val, chip.Rs2MOhm);
 }
 
-// 电流限值编码及浮点转整数保护。
-
+/*
+* 换算并校验限流编码，再写入寄存器。
+*/
 static bool sc8815WriteCurrentLimit(const Sc8815 &chip, Sc8815Register reg, float current_a, float ratio, float sense_mohm)
 {
     // 电流换算要求有效的采样电阻。
-    if (sense_mohm == 0.0f || !std::isfinite(sense_mohm))
-    {
-        return false;
-    }
+    if (sense_mohm == 0.0f || !std::isfinite(sense_mohm)) return false;
 
     const float code = ((current_a * 256.0f * sense_mohm) / (ratio * 10.0f) - 1.0f) + 0.5f;
 
     // 转换向零截断，只有截断结果可用 std::uint8_t 表示时才执行。
-    if (!std::isfinite(code) || code <= -1.0f || code >= 256.0f)
-    {
-        return false;
-    }
+    if (!std::isfinite(code) || code <= -1.0f || code >= 256.0f) return false;
 
     return sc8815WriteByte(chip, reg, static_cast<std::uint8_t>(code));
 }
-
-// 0x07 — VINREG_SET
 
 bool sc8815SetVinreg(const Sc8815 &chip, std::uint16_t voltage_mv)
 {
     // 使用芯片当前的比例配置。
     std::uint8_t config;
-    if (!sc8815ReadRegister(chip, SC8815_REG_CTRL0_SET, config))
-    {
-        return false;
-    }
+    if (!sc8815ReadRegister(chip, SC8815_REG_CTRL0_SET, config)) return false;
 
     // 数据手册公式 (表 8):
     //   VINREG = (VINREG_SET + 1) × VINREG_RATIO (mV)
@@ -195,8 +180,6 @@ bool sc8815SetVinreg(const Sc8815 &chip, std::uint16_t voltage_mv)
     const std::uint8_t code = static_cast<std::uint8_t>(voltage_mv / step - 1u);
     return sc8815WriteByte(chip, SC8815_REG_VINREG_SET, code);
 }
-
-// 0x08 — RATIO
 
 bool sc8815ConfigureMeasurementAndLimitRatios(const Sc8815 &chip, Sc8815RatioConfig config)
 {
@@ -219,8 +202,6 @@ bool sc8815ConfigureMeasurementAndLimitRatios(const Sc8815 &chip, Sc8815RatioCon
     return sc8815WriteMasked(chip, SC8815_REG_RATIO, 0xE0, reg);
 }
 
-// 0x09 — CTRL0_SET
-
 bool sc8815ConfigureModeAndSwitching(const Sc8815 &chip, Sc8815ModeAndSwitchingConfig config)
 {
     // 寄存器位布局 (表 10):
@@ -240,8 +221,6 @@ bool sc8815ConfigureModeAndSwitching(const Sc8815 &chip, Sc8815ModeAndSwitchingC
 
     return sc8815WriteMasked(chip, SC8815_REG_CTRL0_SET, 0x60, reg);
 }
-
-// 0x0A — CTRL1_SET
 
 bool sc8815ConfigureChargingAndFeedback(const Sc8815 &chip, Sc8815ChargingAndFeedbackConfig config)
 {
@@ -267,8 +246,6 @@ bool sc8815ConfigureChargingAndFeedback(const Sc8815 &chip, Sc8815ChargingAndFee
     return sc8815WriteMasked(chip, SC8815_REG_CTRL1_SET, 0x03, reg);
 }
 
-// 0x0B — CTRL2_SET
-
 bool sc8815ConfigureDitheringAndSlewRate(const Sc8815 &chip, Sc8815DitheringAndSlewRateConfig config)
 {
     // 寄存器位布局 (表 12):
@@ -286,8 +263,6 @@ bool sc8815ConfigureDitheringAndSlewRate(const Sc8815 &chip, Sc8815DitheringAndS
 
     return sc8815WriteMasked(chip, SC8815_REG_CTRL2_SET, 0xF0, reg);
 }
-
-// 0x0C — CTRL3_SET
 
 bool sc8815ConfigurePowerPathAndMonitoring(const Sc8815 &chip, Sc8815PowerPathAndMonitoringConfig config)
 {
@@ -314,39 +289,29 @@ bool sc8815ConfigurePowerPathAndMonitoring(const Sc8815 &chip, Sc8815PowerPathAn
     return sc8815WriteByte(chip, SC8815_REG_CTRL3_SET, reg);
 }
 
-// ADC 高低位拼接，返回用于物理量换算的步数。
-
+/*
+* 拼接 ADC 高低位并返回换算步数。
+*/
 static bool sc8815ReadAdc(const Sc8815 &chip, Sc8815Register high_reg, std::uint16_t &steps)
 {
     std::uint8_t data[2];
-    if (!sc8815ReadRegisters(chip, high_reg, data))
-    {
-        return false;
-    }
+    if (!sc8815ReadRegisters(chip, high_reg, data)) return false;
     steps = (data[0] << 2) + (data[1] >> 6) + 1;
     return true;
 }
-
-// ADC 电压和电流换算。
 
 bool sc8815ReadVbusVoltage(const Sc8815 &chip, std::uint16_t &voltage_mv)
 {
     // 使用芯片当前的比例配置。
     std::uint8_t config;
-    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config))
-    {
-        return false;
-    }
+    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config)) return false;
 
     // 数据手册公式 (表 14/15):
     //   VBUS = (4 × VBUS_FB_VALUE + VBUS_FB_VALUE2 + 1) × VBUS_RATIO × 2mV
     //
     // VBUS_RATIO: 12.5x → 25mV/步, 5x → 10mV/步
     std::uint16_t steps;
-    if (!sc8815ReadAdc(chip, SC8815_REG_VBUS_FB_VALUE, steps))
-    {
-        return false;
-    }
+    if (!sc8815ReadAdc(chip, SC8815_REG_VBUS_FB_VALUE, steps)) return false;
 
     Sc8815VbusRatio ratio = static_cast<Sc8815VbusRatio>(config & 0x01);
 
@@ -365,18 +330,12 @@ bool sc8815ReadVbatVoltage(const Sc8815 &chip, std::uint16_t &voltage_mv)
 {
     // 使用芯片当前的比例配置。
     std::uint8_t config;
-    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config))
-    {
-        return false;
-    }
+    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config)) return false;
 
     // 数据手册公式 (表 16/17):
     //   VBAT = (4 × VBAT_FB_VALUE + VBAT_FB_VALUE2 + 1) × VBAT_MON_RATIO × 2mV
     std::uint16_t steps;
-    if (!sc8815ReadAdc(chip, SC8815_REG_VBAT_FB_VALUE, steps))
-    {
-        return false;
-    }
+    if (!sc8815ReadAdc(chip, SC8815_REG_VBAT_FB_VALUE, steps)) return false;
 
     bool mon_5x = (config & 0x02) != 0;
 
@@ -389,18 +348,12 @@ bool sc8815ReadIbusCurrent(const Sc8815 &chip, float &current_a)
 {
     // 使用芯片当前的比例配置。
     std::uint8_t config;
-    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config))
-    {
-        return false;
-    }
+    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config)) return false;
 
     // 数据手册公式 (表 18/19):
     //   IBUS(A) = (4 × IBUS_VALUE + IBUS_VALUE2 + 1) × 2mV × IBUS_RATIO × 10mΩ / (1200 × RS1)
     std::uint16_t steps;
-    if (!sc8815ReadAdc(chip, SC8815_REG_IBUS_VALUE, steps))
-    {
-        return false;
-    }
+    if (!sc8815ReadAdc(chip, SC8815_REG_IBUS_VALUE, steps)) return false;
 
     Sc8815IbusRatio ibus_ratio =
         static_cast<Sc8815IbusRatio>((config >> 2) & 0x03);
@@ -408,16 +361,10 @@ bool sc8815ReadIbusCurrent(const Sc8815 &chip, float &current_a)
     std::uint16_t ratio_val = (ibus_ratio == SC8815_IBUS_RATIO_3x) ? 3 : 6;
 
     // IBUS(A) = steps × (2/1200) × ratio_val × 10/RS1
-    if (chip.Rs1MOhm == 0.0f || !std::isfinite(chip.Rs1MOhm))
-    {
-        return false;
-    }
+    if (chip.Rs1MOhm == 0.0f || !std::isfinite(chip.Rs1MOhm)) return false;
 
     const float measured_a = steps * (2.0f / 1200.0f) * ratio_val * 10.0f / chip.Rs1MOhm;
-    if (!std::isfinite(measured_a))
-    {
-        return false;
-    }
+    if (!std::isfinite(measured_a)) return false;
     current_a = measured_a;
     return true;
 }
@@ -426,33 +373,21 @@ bool sc8815ReadIbatCurrent(const Sc8815 &chip, float &current_a)
 {
     // 使用芯片当前的比例配置。
     std::uint8_t config;
-    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config))
-    {
-        return false;
-    }
+    if (!sc8815ReadRegister(chip, SC8815_REG_RATIO, config)) return false;
 
     // 数据手册公式 (表 20/21):
     //   IBAT(A) = (4 × IBAT_VALUE + IBAT_VALUE2 + 1) × 2mV × IBAT_RATIO × 10mΩ / (1200 × RS2)
     std::uint16_t steps;
-    if (!sc8815ReadAdc(chip, SC8815_REG_IBAT_VALUE, steps))
-    {
-        return false;
-    }
+    if (!sc8815ReadAdc(chip, SC8815_REG_IBAT_VALUE, steps)) return false;
 
     Sc8815IbatRatio ibat_ratio =
         static_cast<Sc8815IbatRatio>((config >> 4) & 0x01);
 
     std::uint16_t ratio_val = (ibat_ratio == SC8815_IBAT_RATIO_6x) ? 6 : 12;
-    if (chip.Rs2MOhm == 0.0f || !std::isfinite(chip.Rs2MOhm))
-    {
-        return false;
-    }
+    if (chip.Rs2MOhm == 0.0f || !std::isfinite(chip.Rs2MOhm)) return false;
 
     const float measured_a = steps * (2.0f / 1200.0f) * ratio_val * 10.0f / chip.Rs2MOhm;
-    if (!std::isfinite(measured_a))
-    {
-        return false;
-    }
+    if (!std::isfinite(measured_a)) return false;
     current_a = measured_a;
     return true;
 }
@@ -462,16 +397,11 @@ bool sc8815ReadAdinVoltage(const Sc8815 &chip, std::uint16_t &voltage_mv)
     // 数据手册公式 (表 22/23):
     //   ADIN = (4 × ADIN_VALUE + ADIN_VALUE2 + 1) × 2mV
     std::uint16_t steps;
-    if (!sc8815ReadAdc(chip, SC8815_REG_ADIN_VALUE, steps))
-    {
-        return false;
-    }
+    if (!sc8815ReadAdc(chip, SC8815_REG_ADIN_VALUE, steps)) return false;
 
     voltage_mv = steps * 2;  // 2mV/步
     return true;
 }
-
-// 0x17 — STATUS (只读)
 
 bool sc8815GetStatus(const Sc8815 &chip, Sc8815Status &status)
 {
@@ -484,8 +414,6 @@ bool sc8815GetStatus(const Sc8815 &chip, Sc8815Status &status)
     status.Eoc       = (reg & 0x02) != 0;
     return true;
 }
-
-// 0x19 — MASK
 
 bool sc8815SetIrqMask(const Sc8815 &chip, Sc8815IrqMaskConfig config)
 {

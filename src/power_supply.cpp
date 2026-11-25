@@ -12,7 +12,14 @@ namespace SampleTask
     class SampleFilter
     {
     public:
+        /*
+        * 将样本加入滑动窗口并返回低通结果。
+        */
         float push(float value);
+
+        /*
+        * 清空有效采样窗口。
+        */
         void reset();
 
     private:
@@ -28,7 +35,6 @@ namespace SampleTask
     static constinit SampleFilter ibus_filter{};
     static constinit SampleFilter ibat_filter{};
 
-    // 清除输出采样状态及滤波窗口。
     void resetOutputSamples()
     {
         vbus_filter.reset();
@@ -37,7 +43,6 @@ namespace SampleTask
         power_sample.IbusValid = false;
     }
 
-    // 清除全部采样状态及滤波窗口。
     void resetSamples()
     {
         resetOutputSamples();
@@ -46,45 +51,36 @@ namespace SampleTask
         power_sample = {};
     }
 
-    // 采样滤波器
+    /*
+    * 对窗口均值执行低通滤波并返回结果。
+    */
     float SampleFilter::push(float value)
     {
         // 第一级对窗口内有效样本取平均。
         Values[Next] = value;
         Next = (Next + 1) % filter_window_size;
-        if (Count < filter_window_size)
-        {
-            ++Count;
-        }
+        if (Count < filter_window_size) ++Count;
 
         float sum = 0.0f;
-        for (std::uint8_t i = 0; i < Count; ++i)
-        {
-            sum += Values[i];
-        }
+        for (std::uint8_t i = 0; i < Count; ++i) sum += Values[i];
         const float average = sum / Count;
 
         // 第二级以首个有效读数初始化，此后对滑动平均执行一阶低通。
         const float alpha = 0.4f;
-        if (Count == 1)
-        {
-            LowPass = average;
-        }
-        else
-        {
-            LowPass += alpha * (average - LowPass);
-        }
+        if (Count == 1) LowPass = average;
+        else LowPass += alpha * (average - LowPass);
         return LowPass;
     }
 
-    // 清空有效样本窗口。
+    /*
+    * 清空有效样本窗口。
+    */
     void SampleFilter::reset()
     {
         Count = 0;
         Next = 0;
     }
 
-    // 定期读取并滤波电源采样通道。
     void run(void *)
     {
         // 首轮立即采样，每条路径在解锁后等待下一周期。
@@ -103,22 +99,13 @@ namespace SampleTask
                 const float filtered_vbat_mv = vbat_filter.push(vbat_mv * board_vbat_gain);
                 power_sample.VbatMv = static_cast<std::uint16_t>(std::clamp(filtered_vbat_mv + 0.5f, 0.0f, 65535.0f));
             }
-            else
-            {
-                vbat_filter.reset();
-            }
+            else vbat_filter.reset();
 
             // 读取输入电流。
             float ibat_a;
             power_sample.IbatValid = sc8815ReadIbatCurrent(power_chip, ibat_a);
-            if (power_sample.IbatValid)
-            {
-                power_sample.IbatA = ibat_filter.push(ibat_a);
-            }
-            else
-            {
-                ibat_filter.reset();
-            }
+            if (power_sample.IbatValid) power_sample.IbatA = ibat_filter.push(ibat_a);
+            else ibat_filter.reset();
 
             // 输出开启时才读取 VBUS 和 IBUS。
             if (output_state != OUTPUT_Enabled)
@@ -136,10 +123,7 @@ namespace SampleTask
                 const float filtered_vbus_mv = vbus_filter.push(vbus_mv * board_vbus_gain);
                 power_sample.VbusMv = static_cast<std::uint16_t>(std::clamp(filtered_vbus_mv + 0.5f, 0.0f, 65535.0f));
             }
-            else
-            {
-                vbus_filter.reset();
-            }
+            else vbus_filter.reset();
 
             // 读取输出电流。
             float ibus_a;
@@ -149,10 +133,7 @@ namespace SampleTask
                 const float corrected_a = ibus_a + board_ibus_offset_a;
                 power_sample.IbusA = ibus_filter.push(std::max(corrected_a, 0.0f));
             }
-            else
-            {
-                ibus_filter.reset();
-            }
+            else ibus_filter.reset();
 
             // 释放状态锁，进入下一周期。
             xSemaphoreGive(state_mutex);

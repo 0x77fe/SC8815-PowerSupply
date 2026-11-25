@@ -12,7 +12,6 @@ namespace SaveTask
     // 命名空间内以一个键存储电压、限流和功率三元组。
     static constexpr char settings_namespace[] = "sc8815";
 
-    // 加载已保存的输出设定。
     void loadSettings()
     {
         ESP_ERROR_CHECK(nvs_flash_init());
@@ -32,7 +31,6 @@ namespace SaveTask
         output_settings = InputTask::normalizeSettings(voltage, current, power);
     }
 
-    // 定期检查设定并在静默期结束后提交。
     void run(void *)
     {
         // 按固定周期运行。

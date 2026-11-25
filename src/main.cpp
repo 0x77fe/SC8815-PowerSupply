@@ -7,15 +7,14 @@
 #include "screen.h"
 #include "task_context.h"
 
-// 初始化硬件、共享状态和运行任务。
+/*
+* 初始化硬件、共享状态和运行任务。
+*/
 extern "C" void app_main()
 {
     vTaskDelay(pdMS_TO_TICKS(1000)); // 等待 PD 握手
     i2cInitialize();
-    if (!screenInitialize() || !screenShowStartup())
-    {
-        ESP_LOGW("power_supply", "SSD1306 initialization failed");
-    }
+    if (!screenInitialize() || !screenShowStartup()) ESP_LOGW("power_supply", "SSD1306 initialization failed");
     vTaskDelay(pdMS_TO_TICKS(1000));
 
     // 加载设定并初始化电源和输入设备。

@@ -52,7 +52,6 @@ static constexpr std::uint8_t glyphs[][5] =
 };
 static_assert(std::size(glyphs) == glyph_characters.size());
 
-// 配置板载 SSD1306 的 128×64 水平寻址模式。
 bool screenInitialize()
 {
     // 设置扫描方向、复用率、电荷泵和面板时序。
@@ -65,14 +64,14 @@ bool screenInitialize()
     return i2cTransfer(board_display_address, commands, {});
 }
 
+/*
+* 分块发送 OLED 帧缓冲。
+*/
 static bool screenSendFrame()
 {
     // 设置完整的列和页地址窗口。
     const std::uint8_t address[] = {0x00, 0x21, 0, screen_width - 1, 0x22, 0, screen_pages - 1};
-    if (!i2cTransfer(board_display_address, address, {}))
-    {
-        return false;
-    }
+    if (!i2cTransfer(board_display_address, address, {})) return false;
 
     // 水平寻址先遍历当前页的所有列，再进入下一页。
     std::uint8_t packet[1 + chunk_size] = {0x40};
@@ -87,32 +86,28 @@ static bool screenSendFrame()
         }
 
         // 每笔事务带有数据控制字节，分块之间允许转换器使用总线。
-        if (!i2cTransfer(board_display_address, std::span{packet}.first(count + 1), {}))
-        {
-            return false;
-        }
+        if (!i2cTransfer(board_display_address, std::span{packet}.first(count + 1), {})) return false;
     }
     return true;
 }
 
-// 字符和位图通过像素操作写入帧缓冲。
+/*
+* 字符和位图通过像素操作写入帧缓冲。
+*/
 static void drawPixel(int x, int y, bool white)
 {
     if (x >= 0 && x < screen_width && y >= 0 && y < screen_height)
     {
         const std::uint8_t bit = 1u << (y % 8);
         std::uint8_t &pixels = frame[x][y / 8];
-        if (white)
-        {
-            pixels |= bit;
-        }
-        else
-        {
-            pixels &= static_cast<std::uint8_t>(~bit);
-        }
+        if (white) pixels |= bit;
+        else pixels &= static_cast<std::uint8_t>(~bit);
     }
 }
 
+/*
+* 按字模和缩放倍数绘制文本。
+*/
 static void drawText(int x, int y, std::string_view text, int scale, bool white)
 {
     for (const char character : text)
@@ -129,16 +124,16 @@ static void drawText(int x, int y, std::string_view text, int scale, bool white)
         {
             for (int row = 0; row < 8 * scale; ++row)
             {
-                if (glyph[column / scale] & (1u << (row / scale)))
-                {
-                    drawPixel(x + column, y + row, white);
-                }
+                if (glyph[column / scale] & (1u << (row / scale))) drawPixel(x + column, y + row, white);
             }
         }
         x += 6 * scale;
     }
 }
 
+/*
+* 绘制单色位图。
+*/
 static void drawBitmap(int x, int y, std::span<const std::uint8_t> bitmap, int width, int height)
 {
     const int stride = (width + 7) / 8;
@@ -146,39 +141,36 @@ static void drawBitmap(int x, int y, std::span<const std::uint8_t> bitmap, int w
     {
         for (int col = 0; col < width; ++col)
         {
-            if (bitmap[row * stride + col / 8] & (0x80u >> (col % 8)))
-            {
-                drawPixel(x + col, y + row, true);
-            }
+            if (bitmap[row * stride + col / 8] & (0x80u >> (col % 8))) drawPixel(x + col, y + row, true);
         }
     }
 }
 
-// 为选中的读数行填充反显背景。
+/*
+* 为选中的读数行填充反显背景。
+*/
 static void highlightReadingRow(int y, bool selected)
 {
-    if (!selected)
-    {
-        return;
-    }
+    if (!selected) return;
 
     // 覆盖整行，包含右侧小字区域。
     for (int row = y - 1; row < y + 16; ++row)
     {
-        for (int col = 0; col < screen_width; ++col)
-        {
-            drawPixel(col, row, true);
-        }
+        for (int col = 0; col < screen_width; ++col) drawPixel(col, row, true);
     }
 }
 
-// 按屏幕右边距对齐小字。
+/*
+* 按屏幕右边距对齐小字。
+*/
 static void drawSmallRight(int y, std::string_view text, bool white)
 {
     drawText(screen_width - 2 - static_cast<int>(text.size()) * 6, y, text, 1, white);
 }
 
-// 将定点数格式化为对齐的小数字段。
+/*
+* 将定点数格式化为对齐的小数字段。
+*/
 static std::string_view formatReading(std::span<char> text, int value, unsigned integer_digits,
                                       unsigned decimal_digits, bool zero_pad, char unit)
 {
@@ -187,14 +179,8 @@ static std::string_view formatReading(std::span<char> text, int value, unsigned 
     const unsigned digits = integer_digits + (decimal_digits ? 1 + decimal_digits : 0);
     for (unsigned index = digits; index > 0; --index)
     {
-        if (decimal_digits && index == integer_digits + 1)
-        {
-            text[sign + index - 1] = '.';
-        }
-        else if (magnitude == 0 && !zero_pad && index < integer_digits)
-        {
-            text[sign + index - 1] = ' ';
-        }
+        if (decimal_digits && index == integer_digits + 1) text[sign + index - 1] = '.';
+        else if (magnitude == 0 && !zero_pad && index < integer_digits) text[sign + index - 1] = ' ';
         else
         {
             text[sign + index - 1] = '0' + magnitude % 10;
@@ -203,15 +189,11 @@ static std::string_view formatReading(std::span<char> text, int value, unsigned 
     }
 
     // 负读数在数字字段前显示符号。
-    if (sign)
-    {
-        text[0] = '-';
-    }
+    if (sign) text[0] = '-';
     text[sign + digits] = unit;
     return {text.data(), sign + digits + 1};
 }
 
-// 定期绘制仪表盘并发送 OLED 帧。
 void DisplayTask::run(void *)
 {
     // 首帧立即绘制，后续按固定周期刷新。
@@ -222,10 +204,7 @@ void DisplayTask::run(void *)
         xSemaphoreTake(state_mutex, portMAX_DELAY);
 
         // 大字显示输出电压、电流和功率。
-        for (auto &column : frame)
-        {
-            std::ranges::fill(column, 0);
-        }
+        for (auto &column : frame) std::ranges::fill(column, 0);
 
         const bool output_power_valid = power_sample.VbusValid && power_sample.IbusValid;
         bool inverted;
@@ -264,10 +243,7 @@ void DisplayTask::run(void *)
                                                     limit, limit >= 100 ? 3 : 2, 0, false, 'W');
             power = {reading.data(), prefix.size() + limit_reading.size()};
         }
-        else if (output_state != OUTPUT_Enabled)
-        {
-            power = "OFF";
-        }
+        else if (output_state != OUTPUT_Enabled) power = "OFF";
         else if (output_power_valid)
         {
             const float output_power_w = power_sample.VbusMv * 0.001f * power_sample.IbusA;
@@ -309,14 +285,10 @@ void DisplayTask::run(void *)
     }
 }
 
-// 绘制并发送 OLED 启动画面。
 bool screenShowStartup()
 {
     // 左侧放置带单像素描边的半色调标志。
-    for (auto &column : frame)
-    {
-        std::ranges::fill(column, 0);
-    }
+    for (auto &column : frame) std::ranges::fill(column, 0);
     const std::int16_t logo_x = 2;
     const std::int16_t logo_right = logo_x + logo_width;
     drawBitmap(logo_x, 2, logo_bitmap, logo_width, logo_height);

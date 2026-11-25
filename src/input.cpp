@@ -39,7 +39,9 @@ namespace InputTask
         { 0, -1,  1,  0}
     };
 
-    // 解码 A/B 相变化并累计完整的旋钮步进。
+    /*
+    * 解码 A/B 相变化并累计完整的旋钮步进。
+    */
     static void IRAM_ATTR encoderInterrupt(void *)
     {
         // 依次读取 A、B 两相并组合为状态。
@@ -52,11 +54,8 @@ namespace InputTask
         const bool button_down = gpio_get_level(button_pin) == 0;
         turned_while_pressed |= changed != 0 && button_down;
 
-        if (changed == 3)
-        {
-            // 两相同时变化时方向不明确，从当前状态重新同步。
-            quarter_steps = 0;
-        }
+        // 两相同时变化时方向不明确，从当前状态重新同步。
+        if (changed == 3) quarter_steps = 0;
         else if (changed != 0)
         {
             // 相邻状态往返互相抵消，完整的四次相变才产生一步。
@@ -65,21 +64,14 @@ namespace InputTask
             {
                 // 根据按键电平将完整步进计入对应的计数器。
                 const int direction = quarter_steps > 0 ? 1 : -1;
-                if (button_down)
-                {
-                    pending_power_steps += direction;
-                }
-                else
-                {
-                    pending_regular_steps += direction;
-                }
+                if (button_down) pending_power_steps += direction;
+                else pending_regular_steps += direction;
                 quarter_steps = 0;
             }
         }
         previous_encoder_state = state;
     }
 
-    // 配置输入引脚，读取两相初始电平后启用编码器双边沿中断。
     void initializeInput()
     {
         const gpio_config_t config =
@@ -105,7 +97,6 @@ namespace InputTask
         ESP_ERROR_CHECK(gpio_isr_handler_add(encoder_b, encoderInterrupt, nullptr));
     }
 
-    // 所有设定入口共用板级输出范围。
     OutputSettings normalizeSettings(std::int64_t voltage_mv, std::int64_t current_ma, std::int64_t power_limit_w)
     {
         voltage_mv = std::clamp<std::int64_t>(voltage_mv, board_min_voltage_mv, board_max_voltage_mv);
@@ -129,10 +120,16 @@ namespace InputTask
     // 控制电源待机引脚。
     static constexpr auto power_stop_pin = static_cast<gpio_num_t>(board_power_stop);
 
+    /*
+    * 在写入失败时关闭输出并记录失败步骤。
+    */
     static bool powerFail(std::string_view step);
+
+    /*
+    * 按安全顺序应用电压和限流设定。
+    */
     static bool powerApply();
 
-    // 在待机状态配置芯片并应用输出设定。
     bool powerInitialize()
     {
         // 初始化PSTOP
@@ -163,31 +160,31 @@ namespace InputTask
         return powerApply();
     }
 
-    // 在待机且设定已应用时使能输出。
+    /*
+    * 在待机且设定已应用时使能输出。
+    */
     static bool powerEnableOutput()
     {
-        if (output_state != OUTPUT_Standby || !has_applied)
-        {
-            return false;
-        }
+        if (output_state != OUTPUT_Standby || !has_applied) return false;
 
         ESP_ERROR_CHECK(gpio_set_level(power_stop_pin, 0));
         output_state = OUTPUT_Enabled;
         return true;
     }
 
-    // 关闭输出并清除输出采样的有效状态。
+    /*
+    * 关闭输出并清除输出采样的有效状态。
+    */
     static void powerDisableOutput()
     {
         ESP_ERROR_CHECK(gpio_set_level(power_stop_pin, 1));
         SampleTask::resetOutputSamples();
-        if (output_state == OUTPUT_Enabled)
-        {
-            output_state = OUTPUT_Standby;
-        }
+        if (output_state == OUTPUT_Enabled) output_state = OUTPUT_Standby;
     }
 
-    // 芯片配置或设定写入失败时关闭输出，并记录失败步骤。
+    /*
+    * 芯片配置或设定写入失败时关闭输出，并记录失败步骤。
+    */
     static bool powerFail(std::string_view step)
     {
         powerDisableOutput();
@@ -196,7 +193,9 @@ namespace InputTask
         return false;
     }
 
-    // 输出设定与寄存器量程换算。
+    /*
+    * 输出设定与寄存器量程换算。
+    */
     static bool powerWriteVoltage()
     {
         // 反算校正后的指令，再舍入到最接近的 2 mV 参考档位。
@@ -208,14 +207,18 @@ namespace InputTask
         return sc8815SetVbusRefE(power_chip, reference_mv);
     }
 
-    // 将设定的电流上限写入芯片。
+    /*
+    * 将设定的电流上限写入芯片。
+    */
     static bool powerWriteCurrent()
     {
         const float limit_a = std::clamp(output_settings.CurrentMa * 0.001f, board_ibus_full_scale_a / 256.0f, board_ibus_full_scale_a);
         return sc8815SetIbusLimit(power_chip, limit_a);
     }
 
-    // 按安全顺序写入输出电压和电流上限。
+    /*
+    * 按安全顺序写入输出电压和电流上限。
+    */
     static bool powerApply()
     {
         // 升压或降低限流时优先写限流；降压并提高限流时优先写电压。
@@ -234,28 +237,20 @@ namespace InputTask
         return true;
     }
 
-    // 将编码器步进转换为一组有效设定。
+    /*
+    * 将编码器步进转换为一组有效设定。
+    */
     static void applyEncoderSteps(std::int32_t regular_steps, std::int32_t power_steps, std::uint32_t now_ms)
     {
         std::int64_t voltage_mv = output_settings.VoltageMv;
         std::int64_t current_ma = output_settings.CurrentMa;
-        if (adjust_mode == ADJUST_Voltage)
-        {
-            voltage_mv += static_cast<std::int64_t>(regular_steps) * board_voltage_step_mv;
-        }
-        else
-        {
-            current_ma += static_cast<std::int64_t>(regular_steps) * board_current_step_ma;
-        }
+        if (adjust_mode == ADJUST_Voltage) voltage_mv += static_cast<std::int64_t>(regular_steps) * board_voltage_step_mv;
+        else current_ma += static_cast<std::int64_t>(regular_steps) * board_current_step_ma;
 
         const std::int64_t power_limit_w = output_settings.PowerLimitW +
             static_cast<std::int64_t>(power_steps) * board_power_limit_step_w;
         const OutputSettings next = normalizeSettings(voltage_mv, current_ma, power_limit_w);
-        if (next.VoltageMv == output_settings.VoltageMv && next.CurrentMa == output_settings.CurrentMa &&
-            next.PowerLimitW == output_settings.PowerLimitW)
-        {
-            return;
-        }
+        if (next.VoltageMv == output_settings.VoltageMv && next.CurrentMa == output_settings.CurrentMa && next.PowerLimitW == output_settings.PowerLimitW) return;
 
         // 更新用户设定，记录保存静默期的起点。
         output_settings = next;
@@ -263,13 +258,9 @@ namespace InputTask
         output_settings.SavePending = true;
 
         // 已完成芯片初始化和设定写入时，更新输出寄存器。
-        if (has_applied)
-        {
-            powerApply();
-        }
+        if (has_applied) powerApply();
     }
 
-    // 定期读取旋钮与按键，更新设定和输出状态。
     void run(void *)
     {
         constexpr std::uint32_t long_press_ms = 1000;
@@ -292,10 +283,7 @@ namespace InputTask
             const std::int32_t power_steps = pending_power_steps;
             pending_regular_steps = 0;
             pending_power_steps = 0;
-            if (!button_down)
-            {
-                turned_while_pressed = false;
-            }
+            if (!button_down) turned_while_pressed = false;
             portEXIT_CRITICAL(&encoder_lock);
 
             // 按住旋钮转动一个完整步进时显示功率上限。
@@ -304,10 +292,7 @@ namespace InputTask
                 power_limit_visible = true;
                 power_adjusted_at_ms = now_ms;
             }
-            if (regular_steps != 0 || power_steps != 0)
-            {
-                applyEncoderSteps(regular_steps, power_steps, now_ms);
-            }
+            if (regular_steps != 0 || power_steps != 0) applyEncoderSteps(regular_steps, power_steps, now_ms);
 
             // 记录本次按压的起点。
             if (button_down && !pressed)
@@ -327,22 +312,13 @@ namespace InputTask
             // 松开时仅处理阈值以内的静止按压。
             if (!button_down && pressed && !turned && held_ms < long_press_ms)
             {
-                if (output_state == OUTPUT_Enabled)
-                {
-                    powerDisableOutput();
-                }
-                else if (output_state == OUTPUT_Standby)
-                {
-                    powerEnableOutput();
-                }
+                if (output_state == OUTPUT_Enabled) powerDisableOutput();
+                else if (output_state == OUTPUT_Standby) powerEnableOutput();
             }
             pressed = button_down;
 
             // 调节超时后隐藏功率上限。
-            if (power_limit_visible && now_ms - power_adjusted_at_ms >= 1200)
-            {
-                power_limit_visible = false;
-            }
+            if (power_limit_visible && now_ms - power_adjusted_at_ms >= 1200) power_limit_visible = false;
 
             // 释放共享状态锁，等待下一轮轮询。
             xSemaphoreGive(state_mutex);
