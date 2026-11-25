@@ -1,0 +1,15 @@
+.pio
+/build/
+/sdkconfig
+/sdkconfig.*
+!/sdkconfig.defaults
+/dependencies.lock
+/managed_components/
+/.vscode/
+/README.md
+/docs/
+/include/README
+/lib/README
+/lib/*.pdf
+/test/README
+/*.tar

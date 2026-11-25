@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.22)
+
+list(APPEND EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/src")
+list(REMOVE_DUPLICATES EXTRA_COMPONENT_DIRS)
+set(COMPONENTS src)
+if(EXISTS "$ENV{IDF_PATH}/components/__pio_env/CMakeLists.txt")
+    list(APPEND COMPONENTS __pio_env)
+endif()
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(sc8815_power_supply)
