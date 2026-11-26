@@ -142,6 +142,8 @@ stateDiagram-v2
     [*] --> Standby: GPIO 进入待机
     Standby --> Enabled: 短按且输出设定已应用
     Enabled --> Standby: 短按关断
+    Enabled --> Short: VBUS_SHORT 置位
+    Short --> Enabled: 短按且输出设定已应用
     Enabled --> Standby: 寄存器设定失败
 ```
 
@@ -160,6 +162,8 @@ flowchart LR
 ```
 
 原始 VBUS 乘以 1.01217，原始 VBAT 乘以 1.00972，IBUS 加上 −0.020 A 后以零为下限。各通道独立维护滤波窗口和低通值，首个有效样本初始化低通状态。VBUS 和 VBAT 四舍五入为整数毫伏，并限幅至 0–65535 mV。关断时清除 VBUS / IBUS 的有效位与滤波状态，VBAT 和 IBAT 可在待机状态显示。采样周期为 50 ms。
+
+输出开启期间，采样任务每 50 ms 先读取 SC8815 的 `STATUS`（`0x17`）。检测到 `VBUS_SHORT`（bit 3）时拉高 PSTOP、清除输出采样并进入 `SHORT` 状态。OLED 功率行优先显示 `SHORT`。短按可重新使能输出，采样任务检测到短路标志时再次关断。
 
 ## 编码器与显示
 

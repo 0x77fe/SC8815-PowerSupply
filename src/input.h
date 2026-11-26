@@ -18,6 +18,11 @@ namespace InputTask
     void initializeInput();
 
     /*
+    * 关断输出并清除输出采样，调用方持有状态锁。
+    */
+    void powerDisableOutput();
+
+    /*
     * 按板级约束规范化输出设定。
     */
     OutputSettings normalizeSettings(std::int64_t voltage_mv, std::int64_t current_ma,

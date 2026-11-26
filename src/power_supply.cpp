@@ -3,6 +3,7 @@
 #include "board_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "input.h"
 #include "power_supply.h"
 #include "task_context.h"
 
@@ -80,6 +81,17 @@ namespace SampleTask
         {
             // 持锁读取采样通道并更新读数。
             xSemaphoreTake(state_mutex, portMAX_DELAY);
+
+            // 输出开启时先检查短路标志，关断后保持故障状态。
+            if (output_state == OUTPUT_Enabled)
+            {
+                Sc8815Status status{};
+                if (sc8815GetStatus(power_chip, status) && status.VbusShort)
+                {
+                    output_state = OUTPUT_Short;
+                    InputTask::powerDisableOutput();
+                }
+            }
 
             // 读取输入电压。
             std::uint16_t vbat_mv;

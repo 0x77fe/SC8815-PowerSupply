@@ -29,7 +29,8 @@ struct OutputSettings
 enum OutputState
 {
     OUTPUT_Standby,
-    OUTPUT_Enabled
+    OUTPUT_Enabled,
+    OUTPUT_Short
 };
 
 struct PowerSample

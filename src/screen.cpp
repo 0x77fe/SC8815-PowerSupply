@@ -22,7 +22,7 @@ static constexpr int screen_pages = screen_height / 8;
 static std::uint8_t frame[screen_pages][screen_width];
 
 // 5×7 字形按列储存，覆盖仪表界面的字符。
-static constexpr std::string_view glyph_characters = "-.:0123456789ACFIMNOVWX";
+static constexpr std::string_view glyph_characters = "-.:0123456789ACFHIMNORSTVWX";
 static constexpr std::uint8_t glyphs[][5] =
 {
     {0x08,0x08,0x08,0x08,0x08}, // -
@@ -41,10 +41,14 @@ static constexpr std::uint8_t glyphs[][5] =
     {0x7E,0x11,0x11,0x11,0x7E}, // A
     {0x3E,0x41,0x41,0x41,0x22}, // C
     {0x7F,0x09,0x09,0x09,0x01}, // F
+    {0x7F,0x08,0x08,0x08,0x7F}, // H
     {0,0x41,0x7F,0x41,0}, // I
     {0x7F,0x02,0x0C,0x02,0x7F}, // M
     {0x7F,0x04,0x08,0x10,0x7F}, // N
     {0x3E,0x41,0x41,0x41,0x3E}, // O
+    {0x7F,0x09,0x19,0x29,0x46}, // R
+    {0x46,0x49,0x49,0x49,0x31}, // S
+    {0x01,0x01,0x7F,0x01,0x01}, // T
     {0x1F,0x20,0x40,0x20,0x1F}, // V
     {0x3F,0x40,0x38,0x40,0x3F}, // W
     {0x63,0x14,0x08,0x14,0x63}, // X
@@ -198,13 +202,15 @@ void DisplayTask::run(void *)
         // 大字显示输出电压、电流和功率。
         for (auto &page : frame) std::ranges::fill(page, 0);
 
+        const bool output_short = output_state == OUTPUT_Short;
+        const bool show_power_limit = power_limit_visible && !output_short;
         const bool output_power_valid = power_sample.VbusValid && power_sample.IbusValid;
         bool inverted;
 
         // 大字读数左对齐，右下方以小字显示设定电压。
         std::array<char, 16> reading;
         constexpr std::string_view unavailable = "--";
-        inverted = !power_limit_visible && adjust_mode == ADJUST_Voltage;
+        inverted = !show_power_limit && adjust_mode == ADJUST_Voltage;
         highlightReadingRow(1, inverted);
         const auto voltage_reading = power_sample.VbusValid
             ? formatReading(reading, (power_sample.VbusMv + 5u) / 10u, 2, 2, true, 'V')
@@ -214,7 +220,7 @@ void DisplayTask::run(void *)
         drawSmallRight(8, set_voltage, !inverted);
 
         // 输出电流与限流设定沿用电压行的布局。
-        inverted = !power_limit_visible && adjust_mode == ADJUST_Current;
+        inverted = !show_power_limit && adjust_mode == ADJUST_Current;
         highlightReadingRow(19, inverted);
         const auto current_reading = power_sample.IbusValid
             ? formatReading(reading, static_cast<int>(std::lround(power_sample.IbusA * 100.0f)), 2, 2, true, 'A')
@@ -224,9 +230,10 @@ void DisplayTask::run(void *)
         drawSmallRight(26, set_current, !inverted);
 
         // 左侧显示输出功率、功率上限或输出状态。
-        highlightReadingRow(37, power_limit_visible);
+        highlightReadingRow(37, show_power_limit);
         std::string_view power = unavailable;
-        if (power_limit_visible)
+        if (output_short) power = "SHORT";
+        else if (show_power_limit)
         {
             constexpr std::string_view prefix = "MAX";
             std::ranges::copy(prefix, reading.begin());
@@ -241,7 +248,7 @@ void DisplayTask::run(void *)
             const float output_power_w = power_sample.VbusMv * 0.001f * power_sample.IbusA;
             power = formatReading(reading, static_cast<int>(std::lround(output_power_w * 10.0f)), 3, 1, true, 'W');
         }
-        drawText(2, 37, power, 2, !power_limit_visible);
+        drawText(2, 37, power, 2, !show_power_limit);
 
         // 比较输出读数距已应用设定的相对差值，达到设定时差值为零。
         std::string_view regulation = unavailable;
@@ -251,7 +258,7 @@ void DisplayTask::run(void *)
             const float current_gap = std::max(0.0f, 1.0f - power_sample.IbusA * 1000.0f / applied_settings.CurrentMa);
             regulation = current_gap < voltage_gap ? "CC" : "CV";
         }
-        drawSmallRight(44, regulation, !power_limit_visible);
+        drawSmallRight(44, regulation, !show_power_limit);
 
         // 底行左对齐输入电压，右对齐输入电流。
         std::array<char, 16> input_reading;

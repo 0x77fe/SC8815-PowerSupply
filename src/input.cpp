@@ -128,21 +128,18 @@ namespace InputTask
     static constexpr auto power_stop_pin = static_cast<gpio_num_t>(board_power_stop);
 
     /*
-    * 在待机且设定已应用时使能输出。
+    * 在待机或短路关断后按已应用的设定使能输出。
     */
     static bool powerEnableOutput()
     {
-        if (output_state != OUTPUT_Standby || !has_applied) return false;
+        if (output_state == OUTPUT_Enabled || !has_applied) return false;
 
         ESP_ERROR_CHECK(gpio_set_level(power_stop_pin, 0));
         output_state = OUTPUT_Enabled;
         return true;
     }
 
-    /*
-    * 关闭输出并清除输出采样的有效状态。
-    */
-    static void powerDisableOutput()
+    void powerDisableOutput()
     {
         ESP_ERROR_CHECK(gpio_set_level(power_stop_pin, 1));
         SampleTask::resetOutputSamples();
@@ -310,7 +307,7 @@ namespace InputTask
             if (!button_down && pressed && !turned && held_ms < long_press_ms)
             {
                 if (output_state == OUTPUT_Enabled) powerDisableOutput();
-                else if (output_state == OUTPUT_Standby) powerEnableOutput();
+                else powerEnableOutput();
             }
             pressed = button_down;
 
