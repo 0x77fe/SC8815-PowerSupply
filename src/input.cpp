@@ -171,7 +171,7 @@ namespace InputTask
                             (board_output_voltage_gain * board_feedback_ratio * reference_step_mv);
         const auto reference_mv = static_cast<std::uint16_t>(
             std::clamp(std::round(steps) * reference_step_mv, 2.0f, 2048.0f));
-        return sc8815SetVbusRefE(power_chip, reference_mv);
+        return sc8815VbusRefESet(power_chip, reference_mv);
     }
 
     /*
@@ -180,7 +180,7 @@ namespace InputTask
     static bool powerWriteCurrent()
     {
         const float limit_a = std::clamp(output_settings.CurrentMa * 0.001f, board_ibus_full_scale_a / 256.0f, board_ibus_full_scale_a);
-        return sc8815SetIbusLimit(power_chip, limit_a);
+        return sc8815IbusLimSet(power_chip, limit_a);
     }
 
     /*
@@ -224,12 +224,12 @@ namespace InputTask
         };
 
         if (!sc8815Begin(power_chip)) return powerFail("I2C probe");
-        if (!sc8815ConfigureBatteryCharging(power_chip, board_battery)) return powerFail("Battery config");
-        if (!sc8815ConfigureMeasurementAndLimitRatios(power_chip, board_ratios)) return powerFail("Ratio config");
-        if (!sc8815ConfigureModeAndSwitching(power_chip, board_switching)) return powerFail("Switching config");
-        if (!sc8815ConfigureChargingAndFeedback(power_chip, board_feedback)) return powerFail("Feedback config");
-        if (!sc8815ConfigureDitheringAndSlewRate(power_chip, slew)) return powerFail("Slew config");
-        if (!sc8815ConfigurePowerPathAndMonitoring(power_chip, board_monitoring)) return powerFail("ADC config");
+        if (!sc8815VbatSet(power_chip, board_battery)) return powerFail("Battery config");
+        if (!sc8815Ratio(power_chip, board_ratios)) return powerFail("Ratio config");
+        if (!sc8815Ctrl0Set(power_chip, board_switching)) return powerFail("Switching config");
+        if (!sc8815Ctrl1Set(power_chip, board_feedback)) return powerFail("Feedback config");
+        if (!sc8815Ctrl2Set(power_chip, slew)) return powerFail("Slew config");
+        if (!sc8815Ctrl3Set(power_chip, board_monitoring)) return powerFail("ADC config");
         if (!sc8815SetIrqMask(power_chip, {})) return powerFail("IRQ mask");
         return powerApply();
     }

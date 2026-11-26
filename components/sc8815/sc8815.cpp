@@ -58,7 +58,7 @@ static bool sc8815WriteMasked(const Sc8815 &chip, Sc8815Register reg, std::uint8
            sc8815WriteByte(chip, reg, (current & preserve_mask) | (data & ~preserve_mask));
 }
 
-bool sc8815ConfigureBatteryCharging(const Sc8815 &chip, Sc8815VbatSetConfig config)
+bool sc8815VbatSet(const Sc8815 &chip, Sc8815VbatSetConfig config)
 {
     // 寄存器位布局 (表 1):
     //   [7:6] IRCOMP    (00=0mΩ, 01=20mΩ, 10=40mΩ, 11=80mΩ)
@@ -91,12 +91,12 @@ static bool sc8815WriteVbusReference(const Sc8815 &chip, Sc8815Register high_reg
     return sc8815WriteRegisters(chip, high_reg, data);
 }
 
-bool sc8815SetVbusRefI(const Sc8815 &chip, std::uint16_t ref_mv)
+bool sc8815VbusRefISet(const Sc8815 &chip, std::uint16_t ref_mv)
 {
     return sc8815WriteVbusReference(chip, SC8815_REG_VBUSREF_I_SET, SC8815_REG_VBUSREF_I_SET2, ref_mv);
 }
 
-bool sc8815SetVbusRefE(const Sc8815 &chip, std::uint16_t ref_mv)
+bool sc8815VbusRefESet(const Sc8815 &chip, std::uint16_t ref_mv)
 {
     // 外部参考电压的推荐工作范围为 0.7 V 至 2.048 V。
     return sc8815WriteVbusReference(chip, SC8815_REG_VBUSREF_E_SET, SC8815_REG_VBUSREF_E_SET2, ref_mv);
@@ -118,7 +118,7 @@ static bool sc8815WriteCurrentLimit(const Sc8815 &chip, Sc8815Register reg, floa
     return sc8815WriteByte(chip, reg, static_cast<std::uint8_t>(code));
 }
 
-bool sc8815SetIbusLimit(const Sc8815 &chip, float current_a)
+bool sc8815IbusLimSet(const Sc8815 &chip, float current_a)
 {
     // 使用芯片当前的比例配置。
     std::uint8_t config;
@@ -136,7 +136,7 @@ bool sc8815SetIbusLimit(const Sc8815 &chip, float current_a)
     return sc8815WriteCurrentLimit(chip, SC8815_REG_IBUS_LIM_SET, current_a, ratio_val, chip.Rs1MOhm);
 }
 
-bool sc8815SetIbatLimit(const Sc8815 &chip, float current_a)
+bool sc8815IbatLimSet(const Sc8815 &chip, float current_a)
 {
     // 使用芯片当前的比例配置。
     std::uint8_t config;
@@ -151,7 +151,7 @@ bool sc8815SetIbatLimit(const Sc8815 &chip, float current_a)
     return sc8815WriteCurrentLimit(chip, SC8815_REG_IBAT_LIM_SET, current_a, ratio_val, chip.Rs2MOhm);
 }
 
-bool sc8815SetVinreg(const Sc8815 &chip, std::uint16_t voltage_mv)
+bool sc8815VinregSet(const Sc8815 &chip, std::uint16_t voltage_mv)
 {
     // 使用芯片当前的比例配置。
     std::uint8_t config;
@@ -169,7 +169,7 @@ bool sc8815SetVinreg(const Sc8815 &chip, std::uint16_t voltage_mv)
     return sc8815WriteByte(chip, SC8815_REG_VINREG_SET, code);
 }
 
-bool sc8815ConfigureMeasurementAndLimitRatios(const Sc8815 &chip, Sc8815RatioConfig config)
+bool sc8815Ratio(const Sc8815 &chip, Sc8815RatioConfig config)
 {
     // 寄存器位布局 (表 9):
     //   [7:6] 保留位 (保持原值)
@@ -190,7 +190,7 @@ bool sc8815ConfigureMeasurementAndLimitRatios(const Sc8815 &chip, Sc8815RatioCon
     return sc8815WriteMasked(chip, SC8815_REG_RATIO, 0xE0, reg);
 }
 
-bool sc8815ConfigureModeAndSwitching(const Sc8815 &chip, Sc8815ModeAndSwitchingConfig config)
+bool sc8815Ctrl0Set(const Sc8815 &chip, Sc8815ModeAndSwitchingConfig config)
 {
     // 寄存器位布局 (表 10):
     //   [7]   EN_OTG        (0=充电模式, 1=放电模式)
@@ -210,7 +210,7 @@ bool sc8815ConfigureModeAndSwitching(const Sc8815 &chip, Sc8815ModeAndSwitchingC
     return sc8815WriteMasked(chip, SC8815_REG_CTRL0_SET, 0x60, reg);
 }
 
-bool sc8815ConfigureChargingAndFeedback(const Sc8815 &chip, Sc8815ChargingAndFeedbackConfig config)
+bool sc8815Ctrl1Set(const Sc8815 &chip, Sc8815ChargingAndFeedbackConfig config)
 {
     // 寄存器位布局 (表 11):
     //   [7]   ICHAR_SEL     (0=IBUS 电流基准, 1=IBAT 电流基准)
@@ -234,7 +234,7 @@ bool sc8815ConfigureChargingAndFeedback(const Sc8815 &chip, Sc8815ChargingAndFee
     return sc8815WriteMasked(chip, SC8815_REG_CTRL1_SET, 0x03, reg);
 }
 
-bool sc8815ConfigureDitheringAndSlewRate(const Sc8815 &chip, Sc8815DitheringAndSlewRateConfig config)
+bool sc8815Ctrl2Set(const Sc8815 &chip, Sc8815DitheringAndSlewRateConfig config)
 {
     // 寄存器位布局 (表 12):
     //   [7:4] 保留位  (保持原值, 禁止覆写, POR=0000)
@@ -252,7 +252,7 @@ bool sc8815ConfigureDitheringAndSlewRate(const Sc8815 &chip, Sc8815DitheringAndS
     return sc8815WriteMasked(chip, SC8815_REG_CTRL2_SET, 0xF0, reg);
 }
 
-bool sc8815ConfigurePowerPathAndMonitoring(const Sc8815 &chip, Sc8815PowerPathAndMonitoringConfig config)
+bool sc8815Ctrl3Set(const Sc8815 &chip, Sc8815PowerPathAndMonitoringConfig config)
 {
     // 寄存器位布局 (表 13):
     //   [7] EN_PGATE           (0=PGATE输出高电平关断PMOS, 1=PGATE输出低电平导通PMOS)
