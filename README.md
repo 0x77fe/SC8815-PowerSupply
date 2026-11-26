@@ -2,6 +2,13 @@
 
 用 ESP32-C3 控制 SC8815 升降压输出。用旋转编码器调节设定，用 SSD1306 查看读数。
 
+## PCB 制板文件
+
+下载对应板卡的 Gerber 压缩包。
+
+- [功率级 PCB](https://github.com/0x77fe/SC8815-PowerSupply/releases/download/v1.0.0/Gerber_PCB_PowerStage.zip)
+- [主控 PCB](https://github.com/0x77fe/SC8815-PowerSupply/releases/download/v1.0.0/Gerber_PCB_MainController.zip)
+
 ## 烧录发布版
 
 1. 从 [GitHub Releases](https://github.com/0x77fe/SC8815-PowerSupply/releases/latest) 下载三个镜像和 `SHA256SUMS.txt`。
